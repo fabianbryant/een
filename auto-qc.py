@@ -62,7 +62,7 @@ def getAdmin():
         except (NotFoundErr, TimeoutErr, StaleRefErr, SelectorErr):
             continue
         else:
-            usr.send_keys("fbryant@een.com")
+            usr.send_keys(USERNAME)
             while True:
                 cont = input(
                     "\nEnter 'ok' when login is authenticated to continue: "
@@ -110,7 +110,7 @@ def getViewer(acct):
             usr.send_keys(acct)
             pwd = wd2.find_element(By.ID, "password1")
             pwd.clear()
-            pwd.send_keys("eagle23soaring")
+            pwd.send_keys(PASSWORD)
             wd2.find_element(By.ID, "login_button").click()
             break
 
@@ -172,8 +172,7 @@ def searcher(in_q, out_q):
                     ec.visibility_of_element_located(
                         (By.XPATH, "//td[@id='bridge-ip_address']")
                     )
-                )
-                .text
+                ).text
             )
         except (NotFoundErr, TimeoutErr, StaleRefErr, SelectorErr):
             continue
@@ -199,15 +198,11 @@ def searcher(in_q, out_q):
                     search.send_keys(serial, Keys.RETURN)
 
                 try:
-                    pgn = (
-                        Wait(wd1, 5)
-                        .until(
+                    pgn = Wait(wd1, 5).until(
                             ec.visibility_of_element_located(
                                 (By.XPATH, "//p[@class='paginator']")
                             )
-                        )
-                        .text
-                    )
+                        ).text
                 except (NotFoundErr, TimeoutErr, StaleRefErr, SelectorErr):
                     in_q.put(serial)
                     continue
@@ -273,7 +268,7 @@ def connecter(out_q):
         tries += 1
 
         while tries == 10:
-            time.sleep(5)
+            time.sleep(2.5)
             tries = 1
             continue
 
@@ -320,6 +315,7 @@ def connecter(out_q):
             bridge_name = wd2.find_element(By.XPATH, "//input[@id]='addBridgeName']")
             bridge_name.clear()
             bridge_name.send_keys(bridge[1], Keys.TAB, Keys.TAB, Keys.RETURN)
+        tries = 0
 
 
 def main():
@@ -332,7 +328,8 @@ def main():
     t2 = threading.Thread(target=connecter, name="Thread 2", args=(out_q,), daemon=True)
     t2.start()
 
-    print("\nScan or enter bridge serials ")
+    print("\nScan or enter bridge serials."
+         "\nMultple serials can be copy/pasted from spreadsheet at one time, also.")
 
     while True:
         x = input().upper()
@@ -352,22 +349,22 @@ def main():
 while True:
     option = input(
         "\nWhich Eagle Eye Viewer account will be used?"
-        "\n1. man_team+SUT@een.com  OR  2. man_team+SUT2@een.com [SUT/SUT2]: "
-    ).lower()
+        "\n1. ACCOUNT  OR  2. ACCOUNT2  [ACC/ACC2]: "
+    ).upper()
 
     if option == 1 or "SUT":
-        acct = "man_team+SUT@een.com"
+        acct = ACCOUNT
         break
 
     elif option == 2 or "SUT2":
-        acct = "man_team+SUT2@een.com"
+        acct = ACCOUNT2
         break
 
     print("\nGot invalid response:", str(option), "\n")
     continue
 
-# ~ opts = webdriver.FirefoxOptions()
-# ~ opts.add_argument("--headless")
+# ~ options = webdriver.FirefoxOptions()
+# ~ options.add_argument("--headless")
 
 wd1 = webdriver.Firefox()
 wd2 = webdriver.Firefox()
