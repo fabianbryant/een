@@ -166,14 +166,11 @@ def searcher(in_q, out_q):
             continue
 
         try:
-            ip = (
-                Wait(wd1, 5)
-                .until(
+            ip = Wait(wd1, 5).until(
                     ec.visibility_of_element_located(
                         (By.XPATH, "//td[@id='bridge-ip_address']")
                     )
                 ).text
-            )
         except (NotFoundErr, TimeoutErr, StaleRefErr, SelectorErr):
             continue
         else:
