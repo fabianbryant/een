@@ -22,6 +22,7 @@ from selenium.common.exceptions import (
 # ~ Last updated 5/21/23
 # ~ Need to add: logging, thread + function for finding/adding cameras in Viewer,
 # ~ Code still needs to be tested at QC Station
+# ~ Version of this code w/o Queues or Threads is used at QC currently
 
 """
 Program was scripted by Fabian Bryant, Manufacturing Technician. (fbryant@een.com)
