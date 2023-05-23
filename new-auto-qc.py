@@ -193,7 +193,7 @@ def searcher(in_q, out_q):
                 serial = wd1.find_element(By.XPATH, "//td[@id='bridge-serial']").text
                 attach_id = wd1.find_element(By.XPATH, "//td[@id='bridge-connect_id']").text
                 firmware = wd1.find_element(By.XPATH, "//td[@id='bridge-firmware']").text
-                pass
+            pass
         else:
             print("\nNo matches found for:", serial, "\n")
             continue
