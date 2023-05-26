@@ -1,6 +1,7 @@
 import requests
 import urllib3
 import functools
+import json
 
 class ApiActions(object):
     def __init__(self):
@@ -9,7 +10,7 @@ class ApiActions(object):
 
         self.rs = requests.Session()
         
-        # Shim requests funtion to include timeout and ignore SSL certificate warnings
+        # Shim requests function to include timeout and ignore SSL certificate warnings
         self.rs.request = functools.partial(self.rs.request, timeout=30, verify=False)
 
         # Session setup
@@ -37,7 +38,30 @@ class ApiActions(object):
         print(self.base_url)
 
         return self.rs
+    
+    def get_list_bridges(self):
+        # Create bridges list
+        bridges = []
+
+        # Make GET request to retrieve list of devices
+        response = self.rs.get(self.base_url + "/g/device/list")
+
+        # Deserialize response text to a list object
+        data = json.loads(response.text)
+
+        # Loop through and append devices that bridges to the bridges list
+        for i in data:
+            if i[3] == 'bridge':
+                bridges.append(i)
+
+        # Loop through bridge to get and print some values
+        for bridge in bridges:
+            esn = bridge[1]
+            name = bridge[2]
+            guid = bridge[8]
+            print(f'ESN: {esn} | Name: {name} | GUID: {guid}')
 
 if __name__ == '__main__':
     api = ApiActions()
     api.login("username","password")
+    api.get_list_bridges()
