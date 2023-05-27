@@ -56,10 +56,10 @@ class ApiActions(object):
                 
         # Loop through bridge to get and print some values
         for bridge in bridges:
-            esn = camera[1]
-            name = camera[2]
-            guid = camera[8]
-            status = camera[4][0][1]
+            esn = bridge[1]
+            name = bridge[2]
+            guid = bridge[8]
+            status = bridge[4][0][1]
             print(f'ESN: {esn} | Name: {name} | GUID: {guid} | Status: {status}')
                 
     def get_list_cameras(self):
