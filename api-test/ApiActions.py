@@ -85,7 +85,7 @@ class ApiActions(object):
             status = camera[4][0][1]            
             print(f'ESN: {esn} | Name: {name} | GUID: {guid} | Status: {status}')
             
-    def add_bridge(self, name: str, connectID, str):
+    def add_bridge(self, name: str, connectID: str):
         # Define payload and PUT
         payload = {"name": name, "connectID": connectID}
         response = self.rs.put(self.base_url + "/g/device", data = payload)
