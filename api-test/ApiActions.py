@@ -49,19 +49,56 @@ class ApiActions(object):
         # Deserialize response text to a list object
         data = json.loads(response.text)
 
-        # Loop through and append devices that bridges to the bridges list
+        # Loop through and append devices that are bridges to the bridges list
         for i in data:
             if i[3] == 'bridge':
                 bridges.append(i)
-
+                
         # Loop through bridge to get and print some values
         for bridge in bridges:
-            esn = bridge[1]
-            name = bridge[2]
-            guid = bridge[8]
-            print(f'ESN: {esn} | Name: {name} | GUID: {guid}')
+            esn = camera[1]
+            name = camera[2]
+            guid = camera[8]
+            status = camera[4][0][1]
+            print(f'ESN: {esn} | Name: {name} | GUID: {guid} | Status: {status}')
+                
+    def get_list_cameras(self):
+        # Create cameras list
+        cameras = []
+        
+        # Make GET request to retrieve list of devices
+        response = self.rs.get(self.base_url + "/g/device/list")
+        
+        # Deserialize response text to a list object
+        data = json.loads(response.text)
+        
+        # Loop through and append devices that are cameras to the cameras list
+        for i in data:
+            if i[3] == 'camera':
+                cameras.append(i)
+        
+        # Loop through camera to get and print some values
+        for camera in cameras:
+            esn = camera[1]
+            name = camera[2]
+            guid = camera[8]
+            status = camera[4][0][1]            
+            print(f'ESN: {esn} | Name: {name} | GUID: {guid} | Status: {status}')
+            
+    def add_bridge(self, name: str, connectID, str):
+        # Define payload and PUT
+        payload = {"name": name, "connectID": connectID}
+        response = self.rs.put(self.base_url + "/g/device", data = payload)
+        assert response.status_code == 200
+        
+    def delete_bridge(self, ID: str):
+        # Define payload and DELETE
+        payload = {"id": ID}
+        response = self.rs.delete(self.base_url + "/g/device", data = payload)
+        assert response.status_code == 200
 
 if __name__ == '__main__':
     api = ApiActions()
     api.login("username","password")
     api.get_list_bridges()
+    api.get_list_cameras()
