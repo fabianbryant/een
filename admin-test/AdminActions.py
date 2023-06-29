@@ -19,7 +19,7 @@ from selenium.common.exceptions import (
 class AdminActions(object):
     def __init__(self):
         # Create webdriver
-        self.driver = webdriver.Chrome(executable_path="/usr/bin/chromedriver")
+        self.driver = webdriver.Chrome(executable_path="/path/to/chromedriver")
 
         # Create I/O queues
         self.in_q = queue.Queue(maxsize=20)
@@ -102,9 +102,9 @@ class AdminActions(object):
                 self.in_q.put(serial)
                 continue
             else:
-                srch = self.driver.find_element(By.NAME, "search")
-                srch.clear()
-                srch.send_keys(serial, Keys.RETURN)
+                search = self.driver.find_element(By.NAME, "search")
+                search.clear()
+                search.send_keys(serial, Keys.RETURN)
 
             # Report no matches if none and continue
             try:
@@ -129,8 +129,12 @@ class AdminActions(object):
                 attach_id = self.driver.find_element(By.XPATH, "//td[@id='bridge-connect_id']").text
                 firmware = self.driver.find_element(By.XPATH, "//td[@id='bridge-firmware']").text
 
-                print(f"\n\t\tIP: {ip_addr}\n\n\t\tSerial: {serial}"
-                      f"\n\n\t\tAttach ID: {attach_id}\n\n\t\tFirmware: {firmware}\n")
+                print(
+                    f"\n\t\t IP: {ip_addr}"
+                    f"\n\n\t\t Serial: {serial}"
+                    f"\n\n\t\t Attach ID: {attach_id}"
+                    f"\n\n\t\t Firmware: {firmware}\n"
+                )
 
             # PUT relevant bridge data into outbound queue
             try:
