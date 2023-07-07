@@ -1,151 +1,183 @@
 import time
-import queue
 import csv
 
 from datetime import datetime
+from queue import Queue, Empty, Full
 from threading import Thread
+from typing import Optional
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.wait import WebDriverWait as Wait
 from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.ui import Select, WebDriverWait as Wait
 from selenium.common.exceptions import (
     TimeoutException as Timeout,
     NoSuchElementException as NotFound,
-    InvalidSelectorException as InvalidSel
+    InvalidSelectorException as InvalidSelector,
+    StaleElementReferenceException as StaleReference,
 )
 
 
 class AdminActions(object):
-    def __init__(self):
+    def __init__(self, options: Optional[Options]):
         # Create webdriver
-        self.driver = webdriver.Chrome(executable_path="/path/to/chromedriver")
+        self.driver = webdriver.Chrome(executable_path="/usr/bin/chromedriver", options=options)
 
         # Create I/O queues
-        self.in_q = queue.Queue(maxsize=20)
-        self.out_q = queue.Queue(maxsize=20)
+        self.in_q = Queue(maxsize=20)
+        self.out_q = Queue(maxsize=20)
 
         # Create searcher thread
         self.thread = Thread(target=self.search, args=(self,), daemon=True)
 
-    def login(self):
-        tries = 0
+    def login(self, username: str, password: str):
+        login_attempts = 0
 
-        # Loop for attempting login
-        while tries < 11:
-            tries += 1
+        # Loop for attempting log in to Admin
+        while login_attempts < 11:
+            
+            login_attempts += 1
 
-            # Rest and reset attempts after 10 failed attempts
-            while tries == 10:
+            # Pause and reset attempts after 10 fails
+            while login_attempts == 10:
                 time.sleep(2.5)
-                tries = 1
+                login_attempts = 1
                 continue
 
-            # GET EEN Admin website
+            # Get Admin website
             self.driver.get("https://eenadmin.eagleeyenetworks.com")
 
-            # Break loop if already logged in
+            # If logged in, break loop
             try:
                 Wait(self.driver, 2.5).until(
                     ec.visibility_of_element_located((By.NAME, "search_type"))
                 )
-            except (Timeout, NotFound):
+            except Timeout:
                 pass
             else:
                 break
 
-            # Prompt user to manually log in
+            # Find login elements
             try:
-                Wait(self.driver, 7.5).until(
+                usrn = Wait(self.driver, 5).until(
                     ec.visibility_of_element_located((By.NAME, "username"))
                 )
-            except (Timeout, NotFound):
+                pw = Wait(self.driver, 2.5).until(
+                    ec.visibility_of_element_located((By.NAME, "password"))
+                )
+            except Timeout:
                 continue
-            else:
-                while True:
-                    ans = input("\nLog in to EEN Admin. Enter 'ok' when logged in to continue: ").lower()
-                    if ans == "ok":
-                        break
-                    print(f"\nGot invalid response: '{ans}' Please only enter 'ok'.\n")
+
+            # Send login credentials
+            try:
+                usrn.clear()
+                usrn.send_keys(username)
+                pw.clear()
+                pw.send_keys(password, Keys.RETURN)
+            except (NotFound, StaleReference):
+                continue
+
+            # Loop for attempting authentication
+            auth_attempts = 0
+            
+            while auth_attempts < 5:
+                try:
+                    auth = Wait(self.driver, 2.5).until(
+                        ec.visibility_of_element_located((By.NAME, "totp"))
+                    )
+                except Timeout:
+                    break
+
+                try:
+                    auth.clear()
+                    auth.send_keys(
+                        input("\nEnter authentication code: "), Keys.RETURN, Keys.RETURN
+                    )
+                except StaleReference:
                     continue
-                break
+
+                auth_attempts += 1
 
     def search(self, serial: str):
-        tries = 0
+        search_attempts = 0
 
-        # Search loop for retrieving and handling bridge data
-        while tries < 11:
-            tries += 1
+        # Search loop for searcher thread
+        while search_attempts < 11:
+            
+            search_attempts += 1
 
-            # Rest and reset attempts after 10 consecutive failed attempts
-            while tries == 10:
+            # Pause and reset attempts after 10 fails
+            while search_attempts == 10:
                 time.sleep(2.5)
-                tries = 1
+                search_attempts = 1
                 continue
 
-            # Check search-queue and GET
+            # Check search queue for bridge serials
             try:
                 serial = self.in_q.get()
-            except queue.Empty():
+            except Empty():
                 time.sleep(0.5)
                 continue
 
             # Make sure user is logged in
-            self.login()
+            self.login("username", "password")
 
-            # Select search-type and search
+            # Select "Bridges and Cameras"
             try:
                 Select(Wait(self.driver, 5).until(
                     ec.visibility_of_element_located((By.NAME, "search_type"))
                 )).select_by_visible_text("Bridges and Cameras")
-            except (Timeout, NotFound):
+            except Timeout:
                 self.in_q.put(serial)
                 continue
-            else:
+
+            # Search Admin
+            try:
                 search = self.driver.find_element(By.NAME, "search")
                 search.clear()
                 search.send_keys(serial, Keys.RETURN)
+            except (NotFound, StaleReference):
+                self.in_q.put(serial)
+                continue
 
-            # Report no matches if none and continue
+            # Inform user if no results
             try:
                 Wait(self.driver, 2.5).until(
                     ec.visibility_of_element_located((By.XPATH, ".//p[contains(text(), 'No matches.')]"))
                 )
-            except (Timeout, NotFound, InvalidSel):
+            except (Timeout, InvalidSelector):
                 pass
             else:
                 print(f"\nNo matches found for '{serial}'.\n")
                 continue
 
-            # Retrieve and display bridge data
+            # Retrieve and print bridge data
             try:
                 ip_addr = Wait(self.driver, 5).until(
                     ec.visibility_of_element_located((By.XPATH, "//td[@id='bridge-ip_address']"))
                 ).text
-            except (Timeout, NotFound, InvalidSel):
+            except (Timeout, InvalidSelector):
                 continue
             else:
                 serial = self.driver.find_element(By.XPATH, "//td[@id='bridge-serial']").text
                 attach_id = self.driver.find_element(By.XPATH, "//td[@id='bridge-connect_id']").text
                 firmware = self.driver.find_element(By.XPATH, "//td[@id='bridge-firmware']").text
 
-                print(
-                    f"\n\t\t IP: {ip_addr}"
-                    f"\n\n\t\t Serial: {serial}"
-                    f"\n\n\t\t Attach ID: {attach_id}"
-                    f"\n\n\t\t Firmware: {firmware}\n"
-                )
+                print(f"\nIP: {ip_addr} | Serial: {serial}"
+                      f"\nAttach ID: {attach_id} | Firmware: {firmware}\n")
 
-            # PUT relevant bridge data into outbound queue
+            # Put relevant data into outbound queue
             try:
                 self.out_q.put_nowait((attach_id, serial))
-            except queue.Full():
+            except Full:
                 pass
 
-            # Assign CSV file name as today's date in YYYY-MM-DD format
             file_name = datetime.now().strftime("%Y-%m-%d")
 
-            # Save relevant bridge data to CSV file
+            # Save bridge data to CSV file
             try:
                 open(file_name + ".csv", "x")
             except FileExistsError:
@@ -155,30 +187,40 @@ class AdminActions(object):
                     writer = csv.writer(csv_file, delimiter="\t")
                     writer.writerow((serial, attach_id, firmware))
 
-            # Reset attempts and continue
-            tries = 0
+            # Reset attempts upon successful loop
+            search_attempts = 0
 
     def start(self):
         # Start searcher thread
         self.thread.start()
 
-        print("\n...Ready! Scan-in or enter one or multiple bridge serials at a time.\n")
+        print("\n...Ready! Scan-in or enter one or more bridge serials at a time.\n")
 
-        # Loop for entering bridge serials for searching
+        # Loop for bridge serials
         while True:
+
             serial = input().upper()
-            if (serial[0:6] == "EEN-BR" and len(serial) == 16) or (serial[0:5] == "MX-BR" and len(serial) == 15):
+
+            if (serial[0:6] == "EEN-BR" and len(serial) == 16) \
+                    or (serial[0:5] == "MX-BR" and len(serial) == 15):
                 try:
                     self.in_q.put(serial)
-                except queue.Full:
+                except Full:
                     continue
                 else:
                     continue
-            print(f"\n '{serial}' does not match proper format: [ EEN-BRXXX-XXXXXX / MX-BRXXX-XXXXXX ]\n")
+
+            print(f"\n'{serial}' does not match proper format: 'EEN-BRXXX-XXXXXX' or 'MX-BRXXX-XXXXXX' \n")
             continue
 
 
-if __name__ == "__main__":
-    admin = AdminActions()
-    admin.login()
+def main():
+    options = Options()
+    options.add_argument("--headless")
+    admin = AdminActions(options)
+    admin.login("username", "password")
     admin.start()
+
+
+if __name__ == "__main__":
+    main()
