@@ -1,6 +1,7 @@
 time
 queue
 csv
+typing
 datetime
 threading
 selenium
