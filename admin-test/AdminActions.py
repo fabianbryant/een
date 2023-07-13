@@ -1,96 +1,100 @@
-import time
 import csv
-
 from datetime import datetime
-from queue import Queue, Empty, Full
+from getpass import getpass
+from queue import Empty, Full, Queue
 from threading import Thread
+from time import sleep
 from typing import Optional
 
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.select import Select
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.wait import WebDriverWait as Wait
-from selenium.webdriver.support import expected_conditions as ec
 from selenium.common.exceptions import (
-    TimeoutException as Timeout,
-    NoSuchElementException as NotFound,
     InvalidSelectorException as InvalidSelector,
+    NoSuchElementException as NotFound,
     StaleElementReferenceException as StaleReference,
+    TimeoutException as Timeout,
 )
+from selenium.webdriver.support import expected_conditions as ec
+from selenium.webdriver.support.select import Select
+from selenium.webdriver.support.wait import WebDriverWait as Wait
 
 
 class AdminActions(object):
-    def __init__(self, options: Optional[Options]):
-        # Create webdriver
-        self.driver = webdriver.Chrome(executable_path="/usr/bin/chromedriver", options=options)
+    def __init__(self, creds: dict, options: Optional[Options], shared_queue: Queue):
+        # Set login credentials
+        self.creds = creds
 
-        # Create I/O queues
-        self.in_q = Queue(maxsize=20)
-        self.out_q = Queue(maxsize=20)
+        # Create webdriver
+        self.driver = webdriver.Chrome(options=options)
+
+        # Setup I/O queues
+        self.search_queue = Queue(maxsize=20)  # In-Queue
+        self.shared_queue = shared_queue  # Out-Queue
 
         # Create searcher thread
         self.thread = Thread(target=self.search, args=(self,), daemon=True)
 
-    def login(self, username: str, password: str):
+    def login(self):
         login_attempts = 0
 
         # Loop for attempting log in to Admin
-        while login_attempts < 11:
-            
+        while login_attempts <= 3:
             login_attempts += 1
 
-            # Pause and reset attempts after 10 fails
-            while login_attempts == 10:
-                time.sleep(2.5)
-                login_attempts = 1
-                continue
+            # Raise exception at max attempts
+            while login_attempts == 3:
+                raise MaximumAttemptsException
 
-            # Get Admin website
+            # GET Admin website
             self.driver.get("https://eenadmin.eagleeyenetworks.com")
 
-            # If logged in, break loop
+            # Return if logged in
             try:
-                Wait(self.driver, 2.5).until(
+                Wait(self.driver, 3).until(
                     ec.visibility_of_element_located((By.NAME, "search_type"))
                 )
             except Timeout:
                 pass
             else:
-                break
+                return
 
             # Find login elements
             try:
-                usrn = Wait(self.driver, 5).until(
+                usrn = Wait(self.driver, 6).until(
                     ec.visibility_of_element_located((By.NAME, "username"))
                 )
-                pw = Wait(self.driver, 2.5).until(
+                pw = Wait(self.driver, 3).until(
                     ec.visibility_of_element_located((By.NAME, "password"))
                 )
             except Timeout:
                 continue
 
-            # Send login credentials
+            # Submit login credentials
             try:
                 usrn.clear()
-                usrn.send_keys(username)
+                usrn.send_keys(self.creds["username"])
                 pw.clear()
-                pw.send_keys(password, Keys.RETURN)
+                pw.send_keys(self.creds["password"], Keys.RETURN)
             except (NotFound, StaleReference):
                 continue
 
-            # Loop for attempting authentication
             auth_attempts = 0
-            
-            while auth_attempts < 5:
+
+            # Loop for attempting authentication
+            while auth_attempts < 3:
+                auth_attempts += 1
+
+                # Break loop if no auth element
                 try:
-                    auth = Wait(self.driver, 2.5).until(
+                    auth = Wait(self.driver, 3).until(
                         ec.visibility_of_element_located((By.NAME, "totp"))
                     )
                 except Timeout:
                     break
 
+                # Prompt user for auth code
                 try:
                     auth.clear()
                     auth.send_keys(
@@ -99,31 +103,48 @@ class AdminActions(object):
                 except StaleReference:
                     continue
 
-                auth_attempts += 1
+                # Return if login successful
+                try:
+                    Wait(self.driver, 3).until(
+                        ec.visibility_of_element_located((By.NAME, "search_type"))
+                    )
+                except Timeout:
+                    continue
+                else:
+                    return
 
     def search(self, serial: str):
+        # Initialize search attempts
         search_attempts = 0
 
         # Search loop for searcher thread
-        while search_attempts < 11:
-            
+        while search_attempts <= 10:
             search_attempts += 1
 
             # Pause and reset attempts after 10 fails
             while search_attempts == 10:
-                time.sleep(2.5)
+                sleep(2.5)
                 search_attempts = 1
                 continue
 
             # Check search queue for bridge serials
             try:
-                serial = self.in_q.get()
+                serial = self.search_queue.get()
             except Empty():
-                time.sleep(0.5)
+                sleep(0.5)
                 continue
 
-            # Make sure user is logged in
-            self.login("username", "password")
+            # Loop for ensuring user is logged in
+            while True:
+                try:
+                    self.login()
+                except MaximumAttemptsException:
+                    print("\nFailed to login! Re-enter login credentials to retry.")
+                    self.creds["username"] = input("\nUsername: ")
+                    self.creds["password"] = getpass("Password: ")
+                    continue
+                else:
+                    break
 
             # Select "Bridges and Cameras"
             try:
@@ -131,7 +152,7 @@ class AdminActions(object):
                     ec.visibility_of_element_located((By.NAME, "search_type"))
                 )).select_by_visible_text("Bridges and Cameras")
             except Timeout:
-                self.in_q.put(serial)
+                self.search_queue.put(serial)
                 continue
 
             # Search Admin
@@ -140,7 +161,7 @@ class AdminActions(object):
                 search.clear()
                 search.send_keys(serial, Keys.RETURN)
             except (NotFound, StaleReference):
-                self.in_q.put(serial)
+                self.search_queue.put(serial)
                 continue
 
             # Inform user if no results
@@ -171,7 +192,7 @@ class AdminActions(object):
 
             # Put relevant data into outbound queue
             try:
-                self.out_q.put_nowait((attach_id, serial))
+                self.shared_queue.put_nowait((attach_id, serial))
             except Full:
                 pass
 
@@ -194,31 +215,61 @@ class AdminActions(object):
         # Start searcher thread
         self.thread.start()
 
-        print("\n...Ready! Scan-in or enter one or more bridge serials at a time.\n")
+        print("...Ready! Enter one or more bridge serials at a time.\n")
 
         # Loop for bridge serials
         while True:
-
             serial = input().upper()
 
             if (serial[0:6] == "EEN-BR" and len(serial) == 16) \
                     or (serial[0:5] == "MX-BR" and len(serial) == 15):
                 try:
-                    self.in_q.put(serial)
+                    self.search_queue.put(serial)
                 except Full:
                     continue
                 else:
                     continue
 
-            print(f"\n'{serial}' does not match proper format: 'EEN-BRXXX-XXXXXX' or 'MX-BRXXX-XXXXXX' \n")
+            print(f"\n'{serial}' does not match proper format: \
+                    'EEN-BRXXX-XXXXXX' or 'MX-BRXXX-XXXXXX' \n")
             continue
+
+    def set_creds(self, creds: dict):
+        self.creds = creds
+
+
+class MaximumAttemptsException(Exception):
+    def __init__(self, message="Maximum attempts exceeded!"):
+        self.message = message
+        super().__init__(self.message)
 
 
 def main():
-    options = Options()
-    options.add_argument("--headless")
-    admin = AdminActions(options)
-    admin.login("username", "password")
+    print("\nEnter EEN Admin login credentials.")
+    creds = {"username": input("\nUsername: "),
+             "password": getpass("Password: ")}
+    opts = Options()
+    opts.add_argument("--headless")
+
+    shared_queue = Queue(maxsize=20)
+
+    admin = AdminActions(creds, opts, shared_queue)
+
+    while True:
+        try:
+            print("\nAttempting login...")
+            admin.login()
+        except MaximumAttemptsException:
+            print("\nFailed to login! Re-enter login credentials to retry.")
+            creds["username"] = input("\nUsername: ")
+            creds["password"] = getpass("Password: ")
+            admin.set_creds(creds)
+            continue
+        else:
+            print("\nLogin successful!\n")
+            del creds
+            break
+
     admin.start()
 
 
